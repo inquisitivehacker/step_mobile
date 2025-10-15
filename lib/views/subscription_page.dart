@@ -1,0 +1,693 @@
+import "package:flutter/material.dart";
+import "package:flutter_svg/svg.dart";
+import 'package:ghastep/services/iap_payment_screen.dart';
+import 'package:ghastep/services/phonepe_payment_screen.dart';
+import 'package:ghastep/services/razorpay.dart';
+import "package:ghastep/widgets/homepage_widgets.dart";
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:ghastep/views/urlconfig.dart';
+import 'package:ghastep/widgets/navbar.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'package:facebook_app_events/facebook_app_events.dart'; // Add this import
+import '../main.dart'; // Import to access global facebookAppEvents instance
+
+class SubscribePage extends StatefulWidget {
+  const SubscribePage({super.key});
+
+  @override
+  State<SubscribePage> createState() {
+    return _SubscribePage();
+  }
+}
+
+class _SubscribePage extends State<SubscribePage> {
+  List<Map> selectCourseData = [
+    {"name": "FMGE ( June - 2025 )", "id": 1},
+    {"name": "FMGE ( December - 2025 )", "id": 2},
+  ];
+  List<int> selectedCourse = [1];
+  // List courses = [];
+  Map coursePricing = {};
+  bool isLoading = false;
+  final storage = const FlutterSecureStorage();
+
+  @override
+  void initState() {
+    super.initState();
+    fetchCoursePricing();
+    _trackPricingPageView(); // Add this line
+  }
+
+  // Add this new method
+  Future<void> _trackPricingPageView() async {
+    try {
+      // Get user data from storage
+      String? token = await storage.read(key: 'token');
+      String? userData = await storage.read(key: 'user_data');
+      String? mobile = await storage.read(key: 'mobile');
+
+      Map<String, dynamic> userInfo = {};
+      if (userData != null) {
+        try {
+          userInfo = json.decode(userData);
+        } catch (e) {
+          print('Error parsing user data: $e');
+        }
+      }
+
+      // Track pricing page view event
+      await facebookAppEvents.logEvent(
+        name: 'PricingPage',
+        parameters: {
+          'email': userInfo['email'] ?? '',
+          'name': userInfo['name'] ?? '',
+          'mobile': mobile ?? '',
+          'city': userInfo['city'] ?? 'Unknown',
+          'country': 'IN',
+          'college': userInfo['college'] ?? '',
+          'page': 'subscription_page',
+          'timestamp': DateTime.now().millisecondsSinceEpoch.toString(),
+        },
+      );
+
+      print('PricingPage event tracked successfully');
+    } catch (e) {
+      print('Facebook PricingPage tracking error: $e');
+    }
+  }
+
+Future<void> fetchCoursePricing() async {
+  setState(() {
+    isLoading = true;
+  });
+
+  try {
+    String token = await storage.read(key: 'token') ?? '';
+    String selectedCourseId = await storage.read(key: 'selectedCourseId') ?? '1';
+    final response = await http.get(
+      Uri.parse('$baseurl/app/get-app-course-pricing/$selectedCourseId/$token'),
+    );
+    
+    print("url: ${'$baseurl/app/get-app-course-pricing/$selectedCourseId/$token'}");
+    print("response: ${response.body}");
+    
+    if (response.statusCode == 200) {
+      var data = json.decode(response.body);
+      if (data["errFlag"] == 1) {
+        print("Error fetching course pricing: ${data["message"]}");
+        setState(() {
+          coursePricing = {};
+        });
+      } else {
+        print("Course pricing fetched successfully: $data");
+        setState(() {
+          coursePricing = data;
+        });
+        
+        // Track pricing page with course data
+        await _trackPricingPageWithCourseData(data);
+      }
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error fetching course pricing: ${response.body}')),
+      );
+    }
+  } catch (e) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Error: $e')),
+    );
+  } finally {
+    setState(() {
+      isLoading = false;
+    });
+  }
+}
+
+Future<void> _trackPricingPageWithCourseData(Map courseData) async {
+  try {
+    // Get user data from storage
+    String? userData = await storage.read(key: 'user_data');
+    String? mobile = await storage.read(key: 'mobile');
+
+    Map<String, dynamic> userInfo = {};
+    if (userData != null) {
+      try {
+        userInfo = json.decode(userData);
+      } catch (e) {
+        print('Error parsing user data: $e');
+      }
+    }
+
+    // Track pricing page view with course data
+    await facebookAppEvents.logEvent(
+      name: 'PricingPage',
+      parameters: {
+        'email': userInfo['email'] ?? '',
+        'name': userInfo['name'] ?? '',
+        'mobile': mobile ?? '',
+        'city': userInfo['city'] ?? 'Unknown',
+        'country': 'IN',
+        'college': userInfo['college'] ?? '',
+        'course_name': courseData['course_name'] ?? '',
+        'actual_price': courseData['actual_price_inr']?.toString() ?? '',
+        'selling_price': courseData['selling_price_inr']?.toString() ?? '',
+        'currency': 'INR',
+        'page': 'subscription_page',
+      },
+    );
+
+    print('PricingPage event with course data tracked successfully');
+  } catch (e) {
+    print('Facebook PricingPage tracking error: $e');
+  }
+}
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SingleChildScrollView(
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              height: 200,
+              clipBehavior: Clip.antiAlias,
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment(1.00, 0.04),
+                  end: Alignment(-1, -0.04),
+                  colors: [
+                    Color.fromARGB(117, 164, 227, 185),
+                    Colors.white,
+                  ],
+                ),
+              ),
+              child: SafeArea(
+                child: Row(
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        InkWell(
+                            onTap: () {
+                              Navigator.pop(context);
+                            },
+                            child: const Icon(Icons.arrow_back_ios_new)),
+                        const SizedBox(
+                          height: 12,
+                        ),
+                        const Text(
+                          'Select a plan',
+                          style: TextStyle(
+                            color: Color(0xFF1A1A1A),
+                            fontSize: 20,
+                            fontFamily: 'SF Pro Display',
+                            fontWeight: FontWeight.w500,
+                            height: 1.40,
+                          ),
+                        ),
+                        const Text(
+                          'Start your preparation for\nNEET PG, FMGE (2025) today!',
+                          style: TextStyle(
+                            color: Color(0xFF737373),
+                            fontSize: 16,
+                            fontFamily: 'SF Pro Display',
+                            fontWeight: FontWeight.w400,
+                            height: 1.50,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Spacer(),
+                    SvgPicture.asset("assets/icons/subscribe/notes_pad.svg")
+                  ],
+                ),
+              ),
+            ),
+            coursePricing.isEmpty
+                ? const Center(
+                    child: Padding(
+                      padding:
+                          EdgeInsets.symmetric(horizontal: 12.0, vertical: 24),
+                      child: Text(
+                        "No course available",
+                        style: TextStyle(
+                          color: Color(0xFF247E80),
+                          fontSize: 16,
+                          fontFamily: 'SF Pro Display',
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  )
+                : buildSubscribeNeetcard(coursePricing: coursePricing),
+            // buildSubscribeFmgecard(),
+          ],
+        ),
+      ),
+      bottomNavigationBar: const StepNavigationBar(1),
+    );
+  }
+
+  Widget buildSubscribeFmgecard() {
+    return Container(
+      margin: const EdgeInsets.all(12),
+      // height: 204,
+      clipBehavior: Clip.antiAlias,
+      decoration: ShapeDecoration(
+        color: const Color(0x0CFE7D14),
+        shape: RoundedRectangleBorder(
+          side: const BorderSide(
+            width: 1,
+            color: Color(0xFFFE860A),
+          ),
+          borderRadius: BorderRadius.circular(6),
+        ),
+      ),
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(12.0),
+            child: Row(
+              // mainAxisAlignment: MainAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    InkWell(
+                      onTap: () {
+                        showModalBottomSheet(
+                            isScrollControlled: true,
+                            context: context,
+                            //  isScrollControlled: true,
+                            backgroundColor: Colors.transparent,
+                            builder: (context) {
+                              return StatefulBuilder(builder:
+                                  (BuildContext context,
+                                      StateSetter modalSetState) {
+                                return buidSelectCourseBottomSheet(
+                                    modalSetState,
+                                    selectCourseData,
+                                    selectedCourse,
+                                    "Select your Course");
+                              });
+                            });
+                      },
+                      child: const Row(
+                        children: [
+                          Text(
+                            'FMGE (2025)',
+                            style: TextStyle(
+                              color: Color(0xFFEC7800),
+                              fontSize: 20,
+                              fontFamily: 'SF Pro Display',
+                              fontWeight: FontWeight.w700,
+                              height: 1.40,
+                            ),
+                          ),
+                          Icon(
+                            Icons.keyboard_arrow_down_sharp,
+                            color: Color(0xFFEC7800),
+                          )
+                        ],
+                      ),
+                    ),
+                    const Text(
+                      '@ ₹1000/year',
+                      style: TextStyle(
+                        color: Color(0xFFEC7800),
+                        fontSize: 14,
+                        fontFamily: 'SF Pro Display',
+                        fontWeight: FontWeight.w500,
+                        height: 1.57,
+                      ),
+                    )
+                  ],
+                ),
+                const Spacer(),
+                Container(
+                  // height: 33,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: ShapeDecoration(
+                    color: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      side:
+                          const BorderSide(width: 1, color: Color(0xFFEC7800)),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    shadows: const [
+                      BoxShadow(
+                        color: Color(0x19000000),
+                        blurRadius: 25,
+                        offset: Offset(0, 4),
+                        spreadRadius: 0,
+                      )
+                    ],
+                  ),
+                  child: const Center(
+                    child: Text(
+                      'Get course',
+                      style: TextStyle(
+                        color: Color(0xFFEC7800),
+                        fontSize: 14,
+                        fontFamily: 'SF Pro Display',
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                flex: 4,
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      buildRow("Structured courses & PDF’s for NEET", false),
+                      buildRow("Daily video lessons", false),
+                      buildRow("Daily tests and weekly exams", false),
+                      buildRow("Content curated & prepared by doctors", false),
+                    ],
+                  ),
+                ),
+              ),
+              Expanded(
+                flex: 1,
+                child: Align(
+                  alignment: Alignment.bottomRight,
+                  child: SvgPicture.asset(
+                      "assets/icons/subscribe/patient_sheet.svg"),
+                ),
+              ),
+            ],
+          )
+        ],
+      ),
+    );
+  }
+}
+
+Widget buildSubscribeNeetcard({required Map coursePricing}) {
+  print("coursePricing: $coursePricing");
+  return Container(
+    margin: const EdgeInsets.all(12),
+    // height: 204,
+    clipBehavior: Clip.antiAlias,
+    decoration: ShapeDecoration(
+      color: const Color(0x0C31B5B9),
+      shape: RoundedRectangleBorder(
+        side: const BorderSide(
+          width: 1,
+          color: Color(0xFF289799),
+        ),
+        borderRadius: BorderRadius.circular(6),
+      ),
+    ),
+    child: Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: Row(
+            // mainAxisAlignment: MainAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        coursePricing['course_name'],
+                        style: const TextStyle(
+                          color: Color(0xFF003E40),
+                          fontSize: 20,
+                          fontFamily: 'SF Pro Display',
+                          fontWeight: FontWeight.w700,
+                          height: 1.40,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      Text(
+                        '₹${coursePricing['actual_price_inr']}/year',
+                        style: const TextStyle(
+                          color: Color(0xCC003F40),
+                          fontSize: 14,
+                          fontFamily: 'SF Pro Display',
+                          fontWeight: FontWeight.w500,
+                          height: 1.57,
+                          decoration: TextDecoration.lineThrough,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '@ ₹${coursePricing['selling_price_inr']}/year',
+                        style: const TextStyle(
+                          color: Color(0xFF003E40),
+                          fontSize: 14,
+                          fontFamily: 'SF Pro Display',
+                          fontWeight: FontWeight.w700,
+                          height: 1.57,
+                        ),
+                      ),
+                    ],
+                  )
+                ],
+              ),
+              const Spacer(),
+              Builder(
+                builder: (context) {
+                  if (Theme.of(context).platform == TargetPlatform.android) {
+                    return ElevatedButton(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            // builder: (context) => const PhonePePaymentScreen(),
+                            builder: (context) => const RazorPayScreen(),
+                          ),
+                        );
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: const Color(0xFF247E80),
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          side: const BorderSide(
+                              width: 1, color: Color(0xFF289799)),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
+                        textStyle: const TextStyle(
+                          fontSize: 14,
+                          fontFamily: 'SF Pro Display',
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      child: const Text('Buy Now'),
+                    );
+                  } else if (Theme.of(context).platform == TargetPlatform.iOS) {
+                    return ElevatedButton(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const IAPPage(),
+                          ),
+                        );
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: const Color(0xFF247E80),
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          side: const BorderSide(
+                              width: 1, color: Color(0xFF289799)),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
+                        textStyle: const TextStyle(
+                          fontSize: 14,
+                          fontFamily: 'SF Pro Display',
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      child: const Text('Buy Now'),
+                    );
+                  } else {
+                    return Container(); // fallback for other platforms
+                  }
+                },
+              ),
+            ],
+          ),
+        ),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(
+              flex: 4,
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (final desc
+                        in (coursePricing['price_description'] as String)
+                            .split(',')
+                            .map((e) => e.trim()))
+                      buildRow(desc, true),
+                  ],
+                ),
+              ),
+            ),
+            Expanded(
+              flex: 1,
+              child: Align(
+                alignment: Alignment.bottomRight,
+                child:
+                    SvgPicture.asset("assets/icons/subscribe/micro_scope.svg"),
+              ),
+            ),
+          ],
+        )
+      ],
+    ),
+  );
+}
+
+Widget buildRow(String title, bool neet) {
+  return Row(
+    children: [
+      Icon(
+        Icons.check_circle,
+        size: 15,
+        color: neet ? const Color(0xFF247E80) : const Color(0xFFEC7800),
+      ),
+      const SizedBox(
+        width: 4,
+      ),
+      Expanded(
+        child: Text(
+          title,
+          style: TextStyle(
+            color: neet ? const Color(0xFF247E80) : const Color(0xFFEC7800),
+            fontSize: 14,
+            fontFamily: 'SF Pro Display',
+            fontWeight: FontWeight.w500,
+            height: 1.57,
+          ),
+        ),
+      )
+    ],
+  );
+}
+
+Widget buidSelectCourseBottomSheet(StateSetter modalSetState,
+    List<Map> selectCourseList, List<int> selected, String bottomSheetTitle) {
+  return Stack(clipBehavior: Clip.none, children: [
+    Container(
+      padding: const EdgeInsets.only(top: 16, left: 20, right: 20, bottom: 16),
+      // margin: EdgeInsets.only(top: 50),
+      clipBehavior: Clip.antiAlias,
+      decoration: const ShapeDecoration(
+        color: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.only(
+            topLeft: Radius.circular(24),
+            topRight: Radius.circular(24),
+          ),
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            bottomSheetTitle,
+            style: const TextStyle(
+              color: Color(0xFF323836),
+              fontSize: 20,
+              fontFamily: 'SF Pro Display',
+              fontWeight: FontWeight.w500,
+              height: 1.10,
+            ),
+          ),
+          const SizedBox(
+            height: 8,
+          ),
+          Container(
+            width: 358,
+            decoration: const ShapeDecoration(
+              shape: RoundedRectangleBorder(
+                side: BorderSide(
+                  width: 1,
+                  strokeAlign: BorderSide.strokeAlignCenter,
+                  color: Color(0xFFEAEAEA),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(
+            height: 8,
+          ),
+          Column(
+            children: List.generate(selectCourseList.length, (int) {
+              return buildSelectCourseRow(
+                  modalSetState, selectCourseList[int], selected);
+            }),
+          ),
+          const SizedBox(
+            height: 12,
+          ),
+          ElevatedButton(
+            onPressed: () {},
+            style: ElevatedButton.styleFrom(
+              minimumSize: const Size(double.infinity, 50),
+              backgroundColor: const Color(0xFF247E80),
+            ),
+            child: const Text(
+              'Apply',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontFamily: 'SF Pro Display',
+                fontWeight: FontWeight.w500,
+                height: 1.50,
+              ),
+            ),
+          ),
+        ],
+      ),
+    ),
+    Positioned(
+      right: 15,
+      top: -50,
+      child: CircleAvatar(
+        backgroundColor: Colors.white,
+        child: IconButton(
+          icon: const Icon(Icons.close, color: Colors.black),
+          // onPressed: () => Navigator.pop(context),
+          onPressed: () {
+            print("clicked");
+          },
+        ),
+      ),
+    ),
+  ]);
+}
