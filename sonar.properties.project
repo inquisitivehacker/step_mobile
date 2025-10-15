@@ -1,6 +1,6 @@
 sonar.projectKey=step_mobile
 
-sonar.projectName=Performance Testing Infrastructure
+sonar.projectName=Step Mobile infra
 
 sonar.projectVersion=1.0
 
